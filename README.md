@@ -1,4 +1,6 @@
-```local LegitxWX = require(game.ReplicatedStorage.LegitxWXLibTabs)```
+```
+local LegitxWX = require(game.ReplicatedStorage.LegitxWXLibTabs)
+```
 
 ```
 local Window = LegitxWX:CreateWindow({
@@ -10,6 +12,8 @@ local Window = LegitxWX:CreateWindow({
 ```
 ```
 local MainTab = Window:CreateTab("Main")
+```
+```
 MainTab:CreateButton({
 	Name = "Auto Farm",
 	Description = "Automatically farms all drops.",
@@ -18,7 +22,7 @@ MainTab:CreateButton({
 	end
 })
 ```
-
+```
 MainTab:CreateButton({
 	Name = "ESP Loader",
 	Description = "Loads custom ESP script.",
@@ -26,12 +30,13 @@ MainTab:CreateButton({
 		print("ESP loaded via loadstring!")
 	]]
 })
-
+```
+```
 MainTab:CreateToggle("God Mode", false, function(state)
 	print("God Mode:", state)
 end)
-
-local MiscTab = Window:CreateTab("Misc")
+```
+```
 MiscTab:CreateButton({
 	Name = "Fly",
 	Description = "Lets you fly around.",
@@ -39,3 +44,4 @@ MiscTab:CreateButton({
 		print("Fly toggled!")
 	end
 })
+```
