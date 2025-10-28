@@ -1,0 +1,248 @@
+local TweenService = game:GetService("TweenService")
+local Player = game.Players.LocalPlayer
+
+local LegitxWXLib = {}
+
+--// Main Window
+function LegitxWXLib:CreateWindow(config)
+	local title = config.Title or "LegitxWX Hub"
+	local author = config.Author or "Unknown"
+	local rbxid = config.RBXID or "N/A"
+	local useToggles = config.UseToggles ~= false
+
+	-- GUI
+	local ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.Name = "LegitxWX_UI"
+	ScreenGui.ResetOnSpawn = false
+	ScreenGui.IgnoreGuiInset = true
+	ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+
+	local Main = Instance.new("Frame")
+	Main.Size = UDim2.new(0, 600, 0, 360)
+	Main.Position = UDim2.new(0.5, -300, 1, 0)
+	Main.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+	Main.BorderSizePixel = 0
+	Main.Active = true
+	Main.Draggable = true
+	Main.Parent = ScreenGui
+
+	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0.5, -300, 0.5, -180)
+	}):Play()
+
+	-- Titlebar
+	local TitleBar = Instance.new("Frame")
+	TitleBar.Size = UDim2.new(1, 0, 0, 45)
+	TitleBar.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+	TitleBar.BorderSizePixel = 0
+	TitleBar.Parent = Main
+
+	local Title = Instance.new("TextLabel")
+	Title.Text = title
+	Title.Font = Enum.Font.GothamBold
+	Title.TextSize = 20
+	Title.TextColor3 = Color3.new(1, 1, 1)
+	Title.BackgroundTransparency = 1
+	Title.Position = UDim2.new(0, 15, 0, 0)
+	Title.Size = UDim2.new(0.6, 0, 1, 0)
+	Title.TextXAlignment = Enum.TextXAlignment.Left
+	Title.Parent = TitleBar
+
+	local Info = Instance.new("TextLabel")
+	Info.Text = "Author: " .. author .. " | RBX ID: " .. rbxid
+	Info.Font = Enum.Font.Gotham
+	Info.TextSize = 13
+	Info.TextColor3 = Color3.fromRGB(180, 180, 180)
+	Info.BackgroundTransparency = 1
+	Info.Position = UDim2.new(0, 15, 0, 45)
+	Info.Size = UDim2.new(1, -30, 0, 20)
+	Info.Parent = Main
+
+	-- Sidebar (Tabs)
+	local SideBar = Instance.new("Frame")
+	SideBar.Size = UDim2.new(0, 150, 1, -65)
+	SideBar.Position = UDim2.new(0, 0, 0, 65)
+	SideBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+	SideBar.BorderSizePixel = 0
+	SideBar.Parent = Main
+
+	local TabLayout = Instance.new("UIListLayout")
+	TabLayout.Padding = UDim.new(0, 5)
+	TabLayout.Parent = SideBar
+
+	-- Main Content Area
+	local Content = Instance.new("Frame")
+	Content.Size = UDim2.new(1, -160, 1, -65)
+	Content.Position = UDim2.new(0, 160, 0, 65)
+	Content.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	Content.BorderSizePixel = 0
+	Content.Parent = Main
+
+	local Tabs = {}
+
+	-- Tab Creator
+	function Tabs:CreateTab(name)
+		local TabButton = Instance.new("TextButton")
+		TabButton.Size = UDim2.new(1, -10, 0, 30)
+		TabButton.Position = UDim2.new(0, 5, 0, 0)
+		TabButton.Text = name
+		TabButton.Font = Enum.Font.Gotham
+		TabButton.TextSize = 16
+		TabButton.TextColor3 = Color3.new(1, 1, 1)
+		TabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+		TabButton.BorderSizePixel = 0
+		TabButton.Parent = SideBar
+
+		local TabFrame = Instance.new("ScrollingFrame")
+		TabFrame.Size = UDim2.new(1, -20, 1, -20)
+		TabFrame.Position = UDim2.new(0, 10, 0, 10)
+		TabFrame.BackgroundTransparency = 1
+		TabFrame.ScrollBarThickness = 6
+		TabFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+		TabFrame.Visible = false
+		TabFrame.Parent = Content
+
+		local Layout = Instance.new("UIListLayout")
+		Layout.Padding = UDim.new(0, 8)
+		Layout.Parent = TabFrame
+
+		local Tab = {}
+
+		-- Button
+		function Tab:CreateButton(data)
+			local name = data.Name or "Unnamed"
+			local desc = data.Description or ""
+			local code = data.Script or ""
+			local callback = data.Callback
+
+			local Frame = Instance.new("Frame")
+			Frame.Size = UDim2.new(1, -10, 0, desc ~= "" and 55 or 35)
+			Frame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+			Frame.BorderSizePixel = 0
+			Frame.Parent = TabFrame
+
+			local Btn = Instance.new("TextButton")
+			Btn.Text = name
+			Btn.Font = Enum.Font.GothamSemibold
+			Btn.TextSize = 16
+			Btn.TextColor3 = Color3.new(1, 1, 1)
+			Btn.BackgroundTransparency = 1
+			Btn.Size = UDim2.new(1, 0, 0, 35)
+			Btn.Parent = Frame
+
+			if desc ~= "" then
+				local Label = Instance.new("TextLabel")
+				Label.Text = desc
+				Label.Font = Enum.Font.Gotham
+				Label.TextSize = 13
+				Label.TextColor3 = Color3.fromRGB(170, 170, 170)
+				Label.BackgroundTransparency = 1
+				Label.Position = UDim2.new(0, 5, 0, 35)
+				Label.Size = UDim2.new(1, -10, 0, 20)
+				Label.TextXAlignment = Enum.TextXAlignment.Left
+				Label.Parent = Frame
+			end
+
+			Btn.MouseEnter:Connect(function()
+				TweenService:Create(Frame, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(70, 70, 70)}):Play()
+			end)
+			Btn.MouseLeave:Connect(function()
+				TweenService:Create(Frame, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play()
+			end)
+
+			Btn.MouseButton1Click:Connect(function()
+				if code ~= "" then
+					local ok, err = pcall(function() loadstring(code)() end)
+					if not ok then warn(err) end
+				elseif callback then
+					pcall(callback)
+				end
+			end)
+
+			TabFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 20)
+		end
+
+		-- Toggle
+		function Tab:CreateToggle(name, default, callback)
+			if not useToggles then return end
+
+			local TFrame = Instance.new("Frame")
+			TFrame.Size = UDim2.new(1, -10, 0, 40)
+			TFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+			TFrame.BorderSizePixel = 0
+			TFrame.Parent = TabFrame
+
+			local Label = Instance.new("TextLabel")
+			Label.Text = name
+			Label.Font = Enum.Font.Gotham
+			Label.TextSize = 15
+			Label.TextColor3 = Color3.new(1, 1, 1)
+			Label.BackgroundTransparency = 1
+			Label.Position = UDim2.new(0, 10, 0, 0)
+			Label.Size = UDim2.new(0.8, 0, 1, 0)
+			Label.TextXAlignment = Enum.TextXAlignment.Left
+			Label.Parent = TFrame
+
+			local Toggle = Instance.new("Frame")
+			Toggle.Size = UDim2.new(0, 45, 0, 22)
+			Toggle.Position = UDim2.new(0.85, 0, 0.25, 0)
+			Toggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+			Toggle.BorderSizePixel = 0
+			Toggle.Parent = TFrame
+
+			local Circle = Instance.new("Frame")
+			Circle.Size = UDim2.new(0, 18, 0, 18)
+			Circle.Position = UDim2.new(0, 2, 0, 2)
+			Circle.BackgroundColor3 = Color3.new(1, 1, 1)
+			Circle.BorderSizePixel = 0
+			Circle.Parent = Toggle
+
+			local on = default or false
+			local function Update(state)
+				on = state
+				local color = state and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(70, 70, 70)
+				local pos = state and UDim2.new(1, -20, 0, 2) or UDim2.new(0, 2, 0, 2)
+				TweenService:Create(Toggle, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
+				TweenService:Create(Circle, TweenInfo.new(0.2), {Position = pos}):Play()
+				pcall(callback, on)
+			end
+			Update(on)
+
+			TFrame.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+					Update(not on)
+				end
+			end)
+
+			TabFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 20)
+		end
+
+		-- Switch Tab
+		TabButton.MouseButton1Click:Connect(function()
+			for _, child in pairs(Content:GetChildren()) do
+				if child:IsA("ScrollingFrame") then
+					child.Visible = false
+				end
+			end
+			for _, btn in pairs(SideBar:GetChildren()) do
+				if btn:IsA("TextButton") then
+					btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+				end
+			end
+			TabButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+			TabFrame.Visible = true
+		end)
+
+		-- Default show first
+		if #SideBar:GetChildren() == 2 then
+			TabFrame.Visible = true
+			TabButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+		end
+
+		return Tab
+	end
+
+	return Tabs
+end
+
+return LegitxWXLib
