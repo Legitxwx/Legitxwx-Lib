@@ -5,7 +5,7 @@ local LegitxWX = require(game.ReplicatedStorage.LegitxWXLibTabs)
 ```
 local Window = LegitxWX:CreateWindow({
 	Title = "LegitxWX Hub",
-	Author = "Frietz Cyan Alag",
+	Author = "By Legitxwx",
 	RBXID = "127742093697776",
 	UseToggles = true
 })
