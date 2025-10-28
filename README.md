@@ -1,47 +1,88 @@
 ```
-local LegitxWX = loadstring(game:HttpGet("https://raw.githubusercontent.com/Legitxwx/Legitxwx-Lib/refs/heads/main/src/LegitxwxUILib"))()
+local lib = require(game.ReplicatedStorage.LegitxwxUILib)
 ```
-
 ```
-local Window = LegitxWX:CreateWindow({
-	Title = "LegitxWX Hub",
-	Author = "By Legitxwx",
-	RBXID = "127742093697776",
-	UseToggles = true
+local win = lib.CreateWindow({
+	Title = "Legitxwx Hub",
+	Author = "Frietz Cyan Alag",
+	RBXID = tostring(game.Players.LocalPlayer.UserId),
+	Size = UDim2.new(0, 720, 0, 480),
+	AutoScale = true,
+	SaveSettings = true,
+	TabPosition = "Left",
+	Animations = true,
+	Theme = "Modern"
 })
 ```
 ```
-local MainTab = Window:CreateTab("Main")
+local main = win:CreateTab("Main")
 ```
 ```
-MainTab:CreateButton({
+main:CreateSection("Main Controls")
+```
+```
+main:CreateLabel("Welcome to Legitxwx UI!")
+```
+```
+main:CreateToggle({
 	Name = "Auto Farm",
-	Description = "Automatically farms all drops.",
-	Callback = function()
-		print("Auto Farm Running!")
+	Default = false,
+	SaveKey = "autoFarm",
+	Callback = function(s)
+		print("AutoFarm:", s)
 	end
 })
 ```
 ```
-MainTab:CreateButton({
-	Name = "ESP Loader",
-	Description = "Loads custom ESP script.",
-	Script = [[
-		print("ESP loaded via loadstring!")
-	]]
-})
-```
-```
-MainTab:CreateToggle("God Mode", false, function(state)
-	print("God Mode:", state)
-end)
-```
-```
-MiscTab:CreateButton({
-	Name = "Fly",
-	Description = "Lets you fly around.",
-	Callback = function()
-		print("Fly toggled!")
+main:CreateSlider({
+	Name = "Speed",
+	Min = 16,
+	Max = 200,
+	Default = 16,
+	Step = 1,
+	SaveKey = "speed",
+	Callback = function(v)
+		print("Speed:", v)
 	end
 })
+```
+```
+main:CreateDropdown({
+	Name = "Mode",
+	Options = {"Easy", "Normal", "Hard"},
+	Default = "Normal",
+	SaveKey = "mode",
+	Callback = function(v)
+		print("Mode:", v)
+	end
+})
+```
+```
+local progress = main:CreateProgress({
+	Name = "Load",
+	Value = 20
+})
+```
+```
+main:CreateColorPicker({
+	Name = "Accent Color",
+	Default = {R = 90, G = 160, B = 255},
+	SaveKey = "accent",
+	Callback = function(c)
+		print("Color", c.R, c.G, c.B)
+	end
+})
+```
+```
+main:CreateTextbox({
+	Name = "Custom",
+	Placeholder = "Type...",
+	SaveKey = "custom",
+	Callback = function(t)
+		print("Text:", t)
+	end
+})
+```
+```
+win:Notify("Loaded", "Legitxwx UI v3 ready", 3)
 ```
