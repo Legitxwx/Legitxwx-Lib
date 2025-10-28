@@ -1,248 +1,547 @@
 local TweenService = game:GetService("TweenService")
-local Player = game.Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
-local LegitxWXLib = {}
+local LocalPlayer = Players.LocalPlayer
+assert(LocalPlayer, "Require this module from a LocalScript (LocalPlayer missing)")
 
---// Main Window
-function LegitxWXLib:CreateWindow(config)
-	local title = config.Title or "LegitxWX Hub"
+local Legitxwx = {}
+Legitxwx.__index = Legitxwx
+
+-- Default theme
+local DEFAULT_THEME = {
+	Window = Color3.fromRGB(22,22,22),
+	TitleBar = Color3.fromRGB(30,30,33),
+	Sidebar = Color3.fromRGB(28,28,28),
+	Content = Color3.fromRGB(34,34,36),
+	Panel = Color3.fromRGB(44,44,46),
+	Text = Color3.fromRGB(245,245,245),
+	SubText = Color3.fromRGB(170,170,170),
+	Accent = Color3.fromRGB(90,160,255),
+	On = Color3.fromRGB(0,200,120),
+	Off = Color3.fromRGB(80,80,80)
+}
+
+-- small factory
+local function new(class, props)
+	local inst = Instance.new(class)
+	if props then for k,v in pairs(props) do pcall(function() inst[k] = v end) end end
+	return inst
+end
+
+local function tween(inst, props, info)
+	info = info or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	return TweenService:Create(inst, info, props)
+end
+
+-- Session storage: store JSON StringValue under PlayerGui
+local function getSettingsStore()
+	local pg = LocalPlayer:WaitForChild("PlayerGui")
+	local folder = pg:FindFirstChild("Legitxwx_Settings")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "Legitxwx_Settings"
+		folder.Parent = pg
+	end
+	local store = folder:FindFirstChild("settings_json")
+	if not store then
+		store = Instance.new("StringValue")
+		store.Name = "settings_json"
+		store.Value = "{}"
+		store.Parent = folder
+	end
+	return store
+end
+
+local function loadSettings()
+	local store = getSettingsStore()
+	local ok, tbl = pcall(function() return HttpService:JSONDecode(store.Value) end)
+	return (ok and type(tbl)=="table") and tbl or {}
+end
+
+local function saveSettings(tbl)
+	local store = getSettingsStore()
+	store.Value = HttpService:JSONEncode(tbl or {})
+end
+
+-- responsive sizing helper
+local function getViewportSize()
+	local cam = workspace.CurrentCamera
+	if cam then
+		return cam.ViewportSize
+	end
+	-- fallback
+	return Vector2.new(1366, 768)
+end
+
+-- fetch avatar headshot url safely
+local function fetchAvatarUrl(userId)
+	local ok, url = pcall(function()
+		return Players:GetUserThumbnailAsync(tonumber(userId) or 0, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+	end)
+	if ok and type(url) == "string" and url ~= "" then
+		return url
+	end
+	return nil
+end
+
+-- public CreateWindow
+-- config: Title, Author, RBXID, Size (UDim2), MinSize (Vector2), MaxSize (Vector2),
+-- Theme (table|string), AutoScale (bool), SaveSettings (bool), TabPosition ("Left"/"Top"/"Bottom")
+function Legitxwx.CreateWindow(config)
+	assert(typeof(config)=="table" or config==nil, "CreateWindow expects table or nil")
+	config = config or {}
+
+	local theme = (type(config.Theme)=="table" and config.Theme) or DEFAULT_THEME
+	local title = config.Title or "Legitxwx Hub"
 	local author = config.Author or "Unknown"
-	local rbxid = config.RBXID or "N/A"
-	local useToggles = config.UseToggles ~= false
+	local rbxid = config.RBXID or nil
+	local saveSettings = config.SaveSettings == true
+	local tabPos = config.TabPosition or "Left"
+	local autoscale = config.AutoScale ~= false
+	local minSize = config.MinSize or Vector2.new(320, 200)
+	local maxSize = config.MaxSize or Vector2.new(1200, 800)
+	local baseSize = config.Size or UDim2.new(0, 720, 0, 480)
+	local animations = (config.Animations == nil) and true or config.Animations
 
-	-- GUI
-	local ScreenGui = Instance.new("ScreenGui")
-	ScreenGui.Name = "LegitxWX_UI"
-	ScreenGui.ResetOnSpawn = false
-	ScreenGui.IgnoreGuiInset = true
-	ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+	-- create screen gui
+	local screen = new("ScreenGui",{Name="Legitxwx_UI", ResetOnSpawn=false, Parent=LocalPlayer:WaitForChild("PlayerGui")})
+	screen.IgnoreGuiInset = true
 
-	local Main = Instance.new("Frame")
-	Main.Size = UDim2.new(0, 600, 0, 360)
-	Main.Position = UDim2.new(0.5, -300, 1, 0)
-	Main.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
-	Main.BorderSizePixel = 0
-	Main.Active = true
-	Main.Draggable = true
-	Main.Parent = ScreenGui
+	-- background
+	local bg = new("Frame",{Size=UDim2.new(1,0,1,0), BackgroundColor3=Color3.new(0,0,0), BackgroundTransparency=0.6, Parent=screen})
 
-	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0.5, -300, 0.5, -180)
-	}):Play()
+	-- responsive size function
+	local viewport = getViewportSize()
+	local function computeSize()
+		if not autoscale then return baseSize end
+		local w = viewport.X
+		if w <= 420 then
+			-- very small screen -> compress UI
+			local width = math.clamp(math.floor(w * 0.92), 280, 420)
+			local height = math.clamp(math.floor(viewport.Y * 0.78), 180, 700)
+			return UDim2.new(0, width, 0, height)
+		else
+			-- larger screens -> use base but clamp to max/min
+			local bw = baseSize.X.Offset
+			local bh = baseSize.Y.Offset
+			local width = math.clamp(bw, minSize.X, math.min(maxSize.X, viewport.X - 60))
+			local height = math.clamp(bh, minSize.Y, math.min(maxSize.Y, viewport.Y - 80))
+			return UDim2.new(0, width, 0, height)
+		end
+	end
 
-	-- Titlebar
-	local TitleBar = Instance.new("Frame")
-	TitleBar.Size = UDim2.new(1, 0, 0, 45)
-	TitleBar.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
-	TitleBar.BorderSizePixel = 0
-	TitleBar.Parent = Main
+	-- main frame and titlebar
+	local Main = new("Frame",{Size = computeSize(), Position = UDim2.new(0.5, -computeSize().X.Offset/2, 0.5, -computeSize().Y.Offset/2), BackgroundColor3 = theme.Window, BorderSizePixel = 0, Parent = screen, Active=true, Draggable=true})
+	new("UICorner",{Parent=Main, CornerRadius=UDim.new(0,8)})
 
-	local Title = Instance.new("TextLabel")
-	Title.Text = title
-	Title.Font = Enum.Font.GothamBold
-	Title.TextSize = 20
-	Title.TextColor3 = Color3.new(1, 1, 1)
-	Title.BackgroundTransparency = 1
-	Title.Position = UDim2.new(0, 15, 0, 0)
-	Title.Size = UDim2.new(0.6, 0, 1, 0)
-	Title.TextXAlignment = Enum.TextXAlignment.Left
-	Title.Parent = TitleBar
+	local TitleBar = new("Frame",{Size=UDim2.new(1,0,0,44), BackgroundColor3=theme.TitleBar, Parent=Main})
+	new("UICorner",{Parent=TitleBar, CornerRadius=UDim.new(0,6)})
+	local TitleLabel = new("TextLabel",{Text=title, BackgroundTransparency=1, Position=UDim2.new(0,48,0,0), Size=UDim2.new(0.6,0,1,0), Font=Enum.Font.GothamBold, TextSize=18, TextColor3=theme.Text, TextXAlignment=Enum.TextXAlignment.Left, Parent=TitleBar})
+	local InfoLabel = new("TextLabel",{Text = ("Author: %s | RBXID: %s"):format(author, tostring(rbxid or "N/A")), BackgroundTransparency=1, Position=UDim2.new(1,-320,0,0), Size=UDim2.new(0.38,0,1,0), Font=Enum.Font.Gotham, TextSize=12, TextColor3=theme.SubText, TextXAlignment=Enum.TextXAlignment.Right, Parent=TitleBar})
 
-	local Info = Instance.new("TextLabel")
-	Info.Text = "Author: " .. author .. " | RBX ID: " .. rbxid
-	Info.Font = Enum.Font.Gotham
-	Info.TextSize = 13
-	Info.TextColor3 = Color3.fromRGB(180, 180, 180)
-	Info.BackgroundTransparency = 1
-	Info.Position = UDim2.new(0, 15, 0, 45)
-	Info.Size = UDim2.new(1, -30, 0, 20)
-	Info.Parent = Main
+	-- small avatar image if RBXID provided
+	local AvatarImg
+	if rbxid then
+		local url = fetchAvatarUrl(rbxid)
+		AvatarImg = new("ImageLabel",{Size=UDim2.new(0,36,0,36), Position=UDim2.new(0,6,0.5,-18), BackgroundTransparency=1, Parent=TitleBar, Image = url or ""})
+		AvatarImg.ScaleType = Enum.ScaleType.Crop
+		new("UICorner",{Parent=AvatarImg, CornerRadius=UDim.new(0,6)})
+	end
 
-	-- Sidebar (Tabs)
-	local SideBar = Instance.new("Frame")
-	SideBar.Size = UDim2.new(0, 150, 1, -65)
-	SideBar.Position = UDim2.new(0, 0, 0, 65)
-	SideBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-	SideBar.BorderSizePixel = 0
-	SideBar.Parent = Main
+	-- close and minimize
+	local CloseBtn = new("TextButton",{Text="✕", Size=UDim2.new(0,36,0,36), Position=UDim2.new(1,-44,0.5,-18), BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=18, TextColor3=theme.SubText, Parent=TitleBar})
+	local MinBtn = new("TextButton",{Text="—", Size=UDim2.new(0,36,0,36), Position=UDim2.new(1,-88,0.5,-18), BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=18, TextColor3=theme.SubText, Parent=TitleBar})
 
-	local TabLayout = Instance.new("UIListLayout")
-	TabLayout.Padding = UDim.new(0, 5)
-	TabLayout.Parent = SideBar
+	CloseBtn.MouseEnter:Connect(function() tween(CloseBtn,{TextColor3=theme.Text}):Play() end)
+	CloseBtn.MouseLeave:Connect(function() tween(CloseBtn,{TextColor3=theme.SubText}):Play() end)
+	CloseBtn.MouseButton1Click:Connect(function()
+		if animations then tween(Main, {Position = UDim2.new(0.5, -Main.Size.X.Offset/2, 1, 40)}, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In)):Play() wait(0.3) end
+		screen:Destroy()
+	end)
 
-	-- Main Content Area
-	local Content = Instance.new("Frame")
-	Content.Size = UDim2.new(1, -160, 1, -65)
-	Content.Position = UDim2.new(0, 160, 0, 65)
-	Content.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-	Content.BorderSizePixel = 0
-	Content.Parent = Main
+	MinBtn.MouseButton1Click:Connect(function()
+		if Main.Size.Y.Offset > 64 then tween(Main, {Size = UDim2.new(Main.Size.X.Scale, Main.Size.X.Offset, 0, 64)}, TweenInfo.new(0.22)):Play() else tween(Main, {Size = computeSize()}, TweenInfo.new(0.22)):Play() end
+	end)
 
-	local Tabs = {}
+	-- sidebar/top/bottom + content
+	local SideBar, TopBar, BottomBar
+	local Content = new("Frame",{BackgroundColor3=theme.Content, Size=UDim2.new(1,-170,1,-56), Position = UDim2.new(0,170,0,56), Parent=Main})
+	new("UICorner",{Parent=Content, CornerRadius=UDim.new(0,6)})
 
-	-- Tab Creator
-	function Tabs:CreateTab(name)
-		local TabButton = Instance.new("TextButton")
-		TabButton.Size = UDim2.new(1, -10, 0, 30)
-		TabButton.Position = UDim2.new(0, 5, 0, 0)
-		TabButton.Text = name
-		TabButton.Font = Enum.Font.Gotham
-		TabButton.TextSize = 16
-		TabButton.TextColor3 = Color3.new(1, 1, 1)
-		TabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-		TabButton.BorderSizePixel = 0
-		TabButton.Parent = SideBar
+	if tabPos == "Left" then
+		SideBar = new("Frame",{Size=UDim2.new(0,150,1,-56), Position=UDim2.new(0,0,0,56), BackgroundColor3=theme.Sidebar, Parent=Main})
+		new("UICorner",{Parent=SideBar, CornerRadius=UDim.new(0,6)})
+	elseif tabPos == "Top" then
+		TopBar = new("Frame",{Size=UDim2.new(1,0,0,44), Position=UDim2.new(0,0,0,56), BackgroundColor3=theme.Sidebar, Parent=Main})
+		new("UICorner",{Parent=TopBar, CornerRadius=UDim.new(0,6)})
+		Content.Position = UDim2.new(0,0,0,120); Content.Size = UDim2.new(1,0,1,-120)
+	else
+		BottomBar = new("Frame",{Size=UDim2.new(1,0,0,44), Position=UDim2.new(0,0,1,-44), BackgroundColor3=theme.Sidebar, Parent=Main})
+		new("UICorner",{Parent=BottomBar, CornerRadius=UDim.new(0,6)})
+		Content.Position = UDim2.new(0,0,0,56); Content.Size = UDim2.new(1,0,1,-120)
+	end
 
-		local TabFrame = Instance.new("ScrollingFrame")
-		TabFrame.Size = UDim2.new(1, -20, 1, -20)
-		TabFrame.Position = UDim2.new(0, 10, 0, 10)
-		TabFrame.BackgroundTransparency = 1
-		TabFrame.ScrollBarThickness = 6
-		TabFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-		TabFrame.Visible = false
-		TabFrame.Parent = Content
+	-- List layouts
+	local sideLayout, topLayout, bottomLayout
+	if SideBar then sideLayout = new("UIListLayout",{Parent=SideBar, Padding=UDim.new(0,6)}) end
+	if TopBar then topLayout = new("UIListLayout",{Parent=TopBar, Padding=UDim.new(0,6), FillDirection = Enum.FillDirection.Horizontal}) end
+	if BottomBar then bottomLayout = new("UIListLayout",{Parent=BottomBar, Padding=UDim.new(0,6), FillDirection = Enum.FillDirection.Horizontal}) end
 
-		local Layout = Instance.new("UIListLayout")
-		Layout.Padding = UDim.new(0, 8)
-		Layout.Parent = TabFrame
+	-- notify container
+	local notify = new("Frame",{Size=UDim2.new(0,300,0,0), Position=UDim2.new(1,-320,0,12), BackgroundTransparency=1, Parent=Main})
+	new("UIListLayout",{Parent=notify, Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder, HorizontalAlignment=Enum.HorizontalAlignment.Right})
 
-		local Tab = {}
+	-- settings storage table
+	local settings = saveSettings and loadSettings() or {}
 
-		-- Button
-		function Tab:CreateButton(data)
-			local name = data.Name or "Unnamed"
-			local desc = data.Description or ""
-			local code = data.Script or ""
-			local callback = data.Callback
+	-- window API
+	local window = {}
+	window._screen = screen
+	window._main = Main
+	window._content = Content
+	window._theme = theme
+	window._tabs = {}
+	window._notify = notify
+	window._settings = settings
+	window._save = saveSettings and function() saveSettings(window._settings) end or function() end
 
-			local Frame = Instance.new("Frame")
-			Frame.Size = UDim2.new(1, -10, 0, desc ~= "" and 55 or 35)
-			Frame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-			Frame.BorderSizePixel = 0
-			Frame.Parent = TabFrame
+	-- update canvas helper
+	local function updateCanvas(scroller, layout)
+		if scroller and layout then scroller.CanvasSize = UDim2.new(0,0,0, layout.AbsoluteContentSize.Y + 12) end
+	end
 
-			local Btn = Instance.new("TextButton")
-			Btn.Text = name
-			Btn.Font = Enum.Font.GothamSemibold
-			Btn.TextSize = 16
-			Btn.TextColor3 = Color3.new(1, 1, 1)
-			Btn.BackgroundTransparency = 1
-			Btn.Size = UDim2.new(1, 0, 0, 35)
-			Btn.Parent = Frame
+	-- Reflow on viewport resize
+	local function refreshSize()
+		viewport = getViewportSize()
+		local newSize = computeSize()
+		tween(Main, {Size = newSize, Position = UDim2.new(0.5, -newSize.X.Offset/2, 0.5, -newSize.Y.Offset/2)}, TweenInfo.new(0.2)):Play()
+	end
+	RunService:BindToRenderStep("Legitxwx_Resize"..tostring(math.random()), Enum.RenderPriority.Camera.Value+1, function()
+		-- only when autoscale
+		if autoscale then
+			viewport = getViewportSize()
+			-- simple optimization: update if width changed significantly
+		end
+	end)
+	UserInputService.WindowSizeChanged:Connect(function()
+		refreshSize()
+	end)
 
-			if desc ~= "" then
-				local Label = Instance.new("TextLabel")
-				Label.Text = desc
-				Label.Font = Enum.Font.Gotham
-				Label.TextSize = 13
-				Label.TextColor3 = Color3.fromRGB(170, 170, 170)
-				Label.BackgroundTransparency = 1
-				Label.Position = UDim2.new(0, 5, 0, 35)
-				Label.Size = UDim2.new(1, -10, 0, 20)
-				Label.TextXAlignment = Enum.TextXAlignment.Left
-				Label.Parent = Frame
+	-- CreateTab implementation
+	function window:CreateTab(name)
+		assert(type(name)=="string", "CreateTab name string")
+		-- panel
+		local panel = new("ScrollingFrame",{Size=UDim2.new(1,-20,1,-20), Position=UDim2.new(0,10,0,10), BackgroundTransparency=1, CanvasSize=UDim2.new(0,0,0,0), ScrollBarThickness=6, Visible=false, Parent=Content})
+		local panelLayout = new("UIListLayout",{Parent=panel, Padding=UDim.new(0,8)})
+		panelLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+		-- button depending on bar
+		local tabBtn
+		if SideBar then
+			tabBtn = new("TextButton",{Text=name, Size=UDim2.new(1,-20,0,36), BackgroundColor3=theme.Panel or DEFAULT_THEME.Panel, Font=Enum.Font.Gotham, TextColor3=theme.Text, Parent=SideBar})
+			new("UICorner",{Parent=tabBtn, CornerRadius=UDim.new(0,6)})
+		elseif TopBar then
+			tabBtn = new("TextButton",{Text=name, Size=UDim2.new(0,140,0,36), BackgroundColor3=theme.Panel or DEFAULT_THEME.Panel, Font=Enum.Font.Gotham, TextColor3=theme.Text, Parent=TopBar})
+			new("UICorner",{Parent=tabBtn, CornerRadius=UDim.new(0,6)})
+		else
+			tabBtn = new("TextButton",{Text=name, Size=UDim2.new(0,140,0,36), BackgroundColor3=theme.Panel or DEFAULT_THEME.Panel, Font=Enum.Font.Gotham, TextColor3=theme.Text, Parent=BottomBar})
+			new("UICorner",{Parent=tabBtn, CornerRadius=UDim.new(0,6)})
+		end
+
+		if #window._tabs == 0 then panel.Visible = true; tabBtn.BackgroundColor3 = theme.Accent end
+		tabBtn.MouseButton1Click:Connect(function()
+			for _,t in pairs(window._tabs) do if t.Panel and t.Panel:IsA("ScrollingFrame") then t.Panel.Visible = false end; if t.Button and t.Button:IsA("TextButton") then t.Button.BackgroundColor3 = theme.Panel end end
+			panel.Visible = true; tabBtn.BackgroundColor3 = theme.Accent
+		end)
+
+		-- per-tab API
+		local tab = {}
+
+		local function place(el, opts)
+			opts = opts or {}
+			if opts.Position then
+				el.Position = opts.Position
+				el.Size = opts.Size or el.Size
+				el.Parent = Content
+			else
+				el.Parent = panel
 			end
+			updateCanvas(panel, panelLayout)
+		end
 
-			Btn.MouseEnter:Connect(function()
-				TweenService:Create(Frame, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(70, 70, 70)}):Play()
-			end)
-			Btn.MouseLeave:Connect(function()
-				TweenService:Create(Frame, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play()
-			end)
+		-- Label (simple)
+		function tab:CreateLabel(text, opts)
+			local frame = new("Frame",{Size = UDim2.new(1,-10,0,30), BackgroundTransparency=1})
+			local lbl = new("TextLabel",{Text=text or "", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, TextColor3=theme.Text, Font=Enum.Font.GothamBold, TextSize=14, Parent=frame})
+			place(frame, opts)
+			return frame
+		end
 
-			Btn.MouseButton1Click:Connect(function()
-				if code ~= "" then
-					local ok, err = pcall(function() loadstring(code)() end)
-					if not ok then warn(err) end
-				elseif callback then
-					pcall(callback)
+		-- Section
+		function tab:CreateSection(title, opts)
+			local frame = new("Frame",{Size=UDim2.new(1,-10,0,28), BackgroundColor3=theme.Panel, Parent=nil})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+			local lbl = new("TextLabel",{Text=title or "", BackgroundTransparency=1, Position=UDim2.new(0,8,0,0), Size=UDim2.new(1,-16,1,0), TextColor3=theme.Text, Font=Enum.Font.GothamBold, Parent=frame})
+			place(frame, opts)
+			return frame
+		end
+
+		-- Button (Script or Callback)
+		function tab:CreateButton(opts)
+			opts = opts or {}
+			local name = opts.Name or "Button"
+			local desc = opts.Description or ""
+			local scriptCode = opts.Script or ""
+			local cb = opts.Callback
+
+			local frame = new("Frame",{Size=UDim2.new(1,-10,0, (desc~="" and 60) or 40), BackgroundColor3=theme.Panel})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+			local btn = new("TextButton",{Text=name, Size=UDim2.new(1,0,0,36), BackgroundTransparency=1, Font=Enum.Font.GothamSemibold, TextColor3=theme.Text, Parent=frame})
+			if desc~="" then new("TextLabel",{Text=desc, Size=UDim2.new(1,-10,0,20), Position=UDim2.new(0,5,0,36), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextColor3=theme.SubText, TextXAlignment=Enum.TextXAlignment.Left, Parent=frame}) end
+
+			btn.MouseButton1Click:Connect(function()
+				if type(scriptCode)=="string" and scriptCode~="" then
+					local ok, err = pcall(function() local f,msg = loadstring(scriptCode); assert(f,msg); f() end)
+					if not ok then warn("[Legitxwx] loadstring error:", err) end
+				else
+					safeCall(cb)
 				end
 			end)
-
-			TabFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 20)
+			place(frame, opts)
+			return frame
 		end
 
 		-- Toggle
-		function Tab:CreateToggle(name, default, callback)
-			if not useToggles then return end
-
-			local TFrame = Instance.new("Frame")
-			TFrame.Size = UDim2.new(1, -10, 0, 40)
-			TFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-			TFrame.BorderSizePixel = 0
-			TFrame.Parent = TabFrame
-
-			local Label = Instance.new("TextLabel")
-			Label.Text = name
-			Label.Font = Enum.Font.Gotham
-			Label.TextSize = 15
-			Label.TextColor3 = Color3.new(1, 1, 1)
-			Label.BackgroundTransparency = 1
-			Label.Position = UDim2.new(0, 10, 0, 0)
-			Label.Size = UDim2.new(0.8, 0, 1, 0)
-			Label.TextXAlignment = Enum.TextXAlignment.Left
-			Label.Parent = TFrame
-
-			local Toggle = Instance.new("Frame")
-			Toggle.Size = UDim2.new(0, 45, 0, 22)
-			Toggle.Position = UDim2.new(0.85, 0, 0.25, 0)
-			Toggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-			Toggle.BorderSizePixel = 0
-			Toggle.Parent = TFrame
-
-			local Circle = Instance.new("Frame")
-			Circle.Size = UDim2.new(0, 18, 0, 18)
-			Circle.Position = UDim2.new(0, 2, 0, 2)
-			Circle.BackgroundColor3 = Color3.new(1, 1, 1)
-			Circle.BorderSizePixel = 0
-			Circle.Parent = Toggle
-
-			local on = default or false
-			local function Update(state)
-				on = state
-				local color = state and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(70, 70, 70)
-				local pos = state and UDim2.new(1, -20, 0, 2) or UDim2.new(0, 2, 0, 2)
-				TweenService:Create(Toggle, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
-				TweenService:Create(Circle, TweenInfo.new(0.2), {Position = pos}):Play()
-				pcall(callback, on)
+		function tab:CreateToggle(opts)
+			opts = opts or {}
+			if not opts then return end
+			if window._useToggles == false then return end
+			local name = opts.Name or "Toggle"; local default = opts.Default==true; local cb = opts.Callback
+			-- floating
+			if opts.Global and opts.Position then
+				local float = new("Frame",{Size = opts.Size or UDim2.new(0,150,0,38), Position = opts.Position, BackgroundColor3 = theme.Panel, Parent = Main})
+				new("UICorner",{Parent=float, CornerRadius=UDim.new(0,6)})
+				new("TextLabel",{Text = name, Size=UDim2.new(0.7,0,1,0), BackgroundTransparency = 1, TextColor3 = theme.Text, Font=Enum.Font.Gotham, Parent=float})
+				local sw = new("Frame",{Size = UDim2.new(0,44,0,24), Position = UDim2.new(1,-60,0.5,-12), BackgroundColor3 = default and theme.On or theme.Off, Parent = float})
+				new("UICorner",{Parent=sw, CornerRadius=UDim.new(0,16)})
+				local knob = new("Frame",{Size=UDim2.new(0,18,0,18), Position= default and UDim2.new(1,-20,0,3) or UDim2.new(0,2,0,3), BackgroundColor3 = theme.Window, Parent = sw})
+				new("UICorner",{Parent=knob, CornerRadius=UDim.new(0,12)})
+				local state = default
+				float.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then state = not state; tween(sw,{BackgroundColor3 = state and theme.On or theme.Off}):Play(); tween(knob,{Position= state and UDim2.new(1,-20,0,3) or UDim2.new(0,2,0,3)}):Play(); if saveSettings then window._settings[opts.SaveKey or name] = state; window._save() end; if cb then pcall(cb, state) end end end)
+				return float
 			end
-			Update(on)
 
-			TFrame.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
-					Update(not on)
-				end
-			end)
-
-			TabFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 20)
+			-- normal
+			local frame = new("Frame",{Size = UDim2.new(1,-10,0,38), BackgroundColor3 = theme.Panel})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+			new("TextLabel",{Text = name, Size = UDim2.new(0.7,0,1,0), BackgroundTransparency = 1, TextColor3 = theme.Text, Font = Enum.Font.Gotham, Parent = frame})
+			local sw = new("Frame",{Size = UDim2.new(0,44,0,24), Position = UDim2.new(1,-60,0.5,-12), BackgroundColor3 = default and theme.On or theme.Off, Parent = frame})
+			new("UICorner",{Parent=sw, CornerRadius=UDim.new(0,16)})
+			local knob = new("Frame",{Size=UDim2.new(0,18,0,18), Position= default and UDim2.new(1,-20,0,3) or UDim2.new(0,2,0,3), BackgroundColor3 = theme.Window, Parent = sw})
+			new("UICorner",{Parent=knob, CornerRadius=UDim.new(0,12)})
+			local state = default
+			frame.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then state = not state; tween(sw,{BackgroundColor3 = state and theme.On or theme.Off}):Play(); tween(knob,{Position= state and UDim2.new(1,-20,0,3) or UDim2.new(0,2,0,3)}):Play(); if saveSettings then window._settings[opts.SaveKey or name] = state; window._save() end; if cb then pcall(cb, state) end end end)
+			-- restore saved
+			if saveSettings and window._settings[opts.SaveKey or name] ~= nil then
+				local saved = window._settings[opts.SaveKey or name]
+				state = saved
+				sw.BackgroundColor3 = state and theme.On or theme.Off
+				knob.Position = state and UDim2.new(1,-20,0,3) or UDim2.new(0,2,0,3)
+			end
+			place(frame, opts)
+			return frame
 		end
 
-		-- Switch Tab
-		TabButton.MouseButton1Click:Connect(function()
-			for _, child in pairs(Content:GetChildren()) do
-				if child:IsA("ScrollingFrame") then
-					child.Visible = false
-				end
-			end
-			for _, btn in pairs(SideBar:GetChildren()) do
-				if btn:IsA("TextButton") then
-					btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-				end
-			end
-			TabButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-			TabFrame.Visible = true
-		end)
+		-- Slider (supports Step)
+		function tab:CreateSlider(opts)
+			opts = opts or {}
+			local name = opts.Name or "Slider"; local min = opts.Min or 0; local max = opts.Max or 100; local step = opts.Step or 1
+			local default = math.clamp(opts.Default or min, min, max); local cb = opts.Callback
+			local frame = new("Frame",{Size=UDim2.new(1,-10,0,56), BackgroundColor3 = theme.Panel})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,8)})
+			local label = new("TextLabel",{Text = string.format("%s: %s", name, tostring(default)), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, TextColor3=theme.Text, Font=Enum.Font.Gotham, Parent=frame})
+			local bar = new("Frame",{Size=UDim2.new(1,-14,0,12), Position=UDim2.new(0,7,0,30), BackgroundColor3=Color3.fromRGB(50,50,56), Parent=frame})
+			new("UICorner",{Parent=bar, CornerRadius=UDim.new(0,6)})
+			local fill = new("Frame",{Size=UDim2.new((default-min)/(max-min),0,1,0), BackgroundColor3 = theme.Accent, Parent=bar})
 
-		-- Default show first
-		if #SideBar:GetChildren() == 2 then
-			TabFrame.Visible = true
-			TabButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+			local dragging = false
+			local function setFromX(x)
+				local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+				-- apply step
+				local raw = min + (max-min) * rel
+				local stepped = math.floor(raw / step + 0.5) * step
+				fill.Size = UDim2.new((stepped-min)/(max-min), 0, 1, 0)
+				label.Text = string.format("%s: %s", name, tostring(stepped))
+				if saveSettings then window._settings[opts.SaveKey or name] = stepped; window._save() end
+				if cb then pcall(cb, stepped) end
+			end
+
+			bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging = true; setFromX(i.Position.X) end end)
+			bar.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging = false end end)
+			UserInputService.InputChanged:Connect(function(i) if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then setFromX(i.Position.X) end end)
+
+			-- restore saved
+			if saveSettings and window._settings[opts.SaveKey or name] then
+				local v = window._settings[opts.SaveKey or name]
+				local rel = (v - min) / (max - min)
+				fill.Size = UDim2.new(rel,0,1,0)
+				label.Text = string.format("%s: %s", name, tostring(v))
+			end
+
+			place(frame, opts)
+			return frame
 		end
 
-		return Tab
+		-- Dropdown with simple search
+		function tab:CreateDropdown(opts)
+			opts = opts or {}
+			local name = opts.Name or "Dropdown"; local options = opts.Options or {}; local default = opts.Default or options[1]; local cb = opts.Callback
+			local frame = new("Frame",{Size=UDim2.new(1,-10,0,40), BackgroundColor3 = theme.Panel})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+			local label = new("TextLabel",{Text = string.format("%s: %s", name, tostring(default)), Size=UDim2.new(0.7,0,1,0), BackgroundTransparency=1, TextColor3=theme.Text, Font=Enum.Font.Gotham, Parent=frame})
+			local openBtn = new("TextButton",{Text="▼", Size=UDim2.new(0,34,0,34), Position=UDim2.new(1,-44,0.5,-17), BackgroundTransparency=1, Parent=frame})
+			local list = new("Frame",{Size=UDim2.new(1,0,0,#options*30), Position=UDim2.new(0,0,1,6), BackgroundColor3=theme.Panel, Visible=false, Parent=frame})
+			new("UICorner",{Parent=list, CornerRadius=UDim.new(0,6)})
+			-- search box
+			local search = new("TextBox",{PlaceholderText="Search...", Size=UDim2.new(1,0,0,28), BackgroundColor3=Color3.fromRGB(40,40,44), Parent=list})
+			new("UIListLayout",{Parent=list, Padding=UDim.new(0,2)})
+			local function populateFilter(filter)
+				-- clear existing options after search box
+				for _,c in ipairs(list:GetChildren()) do
+					if c:IsA("TextButton") then c:Destroy() end
+				end
+				for i,opt in ipairs(options) do
+					if filter=="" or string.find(string.lower(opt), string.lower(filter), 1, true) then
+						local btn = new("TextButton",{Text=opt, Size=UDim2.new(1,0,0,30), BackgroundColor3=theme.Panel, Font=Enum.Font.Gotham, TextColor3=theme.Text, Parent=list})
+						btn.MouseButton1Click:Connect(function()
+							label.Text = string.format("%s: %s", name, opt)
+							list.Visible = false
+							if saveSettings then window._settings[opts.SaveKey or name] = opt; window._save() end
+							if cb then pcall(cb, opt) end
+						end)
+					end
+				end
+			end
+			populateFilter("")
+			search:GetPropertyChangedSignal("Text"):Connect(function() populateFilter(search.Text) end)
+			openBtn.MouseButton1Click:Connect(function() list.Visible = not list.Visible end)
+			-- restore saved
+			if saveSettings and window._settings[opts.SaveKey or name] then label.Text = string.format("%s: %s", name, tostring(window._settings[opts.SaveKey or name])) end
+			place(frame, opts)
+			return frame
+		end
+
+		-- Input textbox
+		function tab:CreateTextbox(opts)
+			opts = opts or {}
+			local name = opts.Name or "Textbox"; local placeholder = opts.Placeholder or ""; local cb = opts.Callback
+			local frame = new("Frame",{Size=UDim2.new(1,-10,0,46), BackgroundColor3=theme.Panel})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+			new("TextLabel",{Text=name, Size=UDim2.new(0.28,0,1,0), BackgroundTransparency=1, TextColor3=theme.Text, Font=Enum.Font.Gotham, Parent=frame})
+			local box = new("TextBox",{PlaceholderText=placeholder, Size=UDim2.new(0.64,0,0,28), Position=UDim2.new(0.3,0,0.5,-14), BackgroundColor3=Color3.fromRGB(45,45,50), TextColor3=theme.Text, Parent=frame})
+			box.FocusLost:Connect(function(enter) if enter then if saveSettings then window._settings[opts.SaveKey or name] = box.Text; window._save() end; if cb then pcall(cb, box.Text) end end end)
+			-- restore
+			if saveSettings and window._settings[opts.SaveKey or name] then box.Text = window._settings[opts.SaveKey or name] end
+			place(frame, opts)
+			return frame
+		end
+
+		-- ColorPicker (3 sliders r,g,b)
+		function tab:CreateColorPicker(opts)
+			opts = opts or {}
+			local name = opts.Name or "Color"; local default = opts.Default or {R=90,G=160,B=255}; local cb = opts.Callback
+			local frame = new("Frame",{Size=UDim2.new(1,-10,0,120), BackgroundColor3=theme.Panel})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,8)})
+			local label = new("TextLabel",{Text = name, Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, TextColor3=theme.Text, Font=Enum.Font.GothamBold, Parent=frame})
+			local preview = new("Frame",{Size=UDim2.new(0,60,0,60), Position=UDim2.new(1,-74,0,20), BackgroundColor3=Color3.fromRGB(default.R, default.G, default.B), Parent=frame})
+			new("UICorner",{Parent=preview, CornerRadius=UDim.new(0,6)})
+			local function sliderFactory(yOffset, labelText, initVal, minv, maxv, onChange)
+				local sl = new("Frame",{Size=UDim2.new(1,-90,0,18), Position=UDim2.new(0,10,0,yOffset), BackgroundColor3=Color3.fromRGB(48,48,52), Parent=frame})
+				new("UICorner",{Parent=sl, CornerRadius=UDim.new(0,6)})
+				local txt = new("TextLabel",{Text=labelText, Size=UDim2.new(0.24,0,1,0), BackgroundTransparency=1, TextColor3=theme.SubText, Font=Enum.Font.Gotham, Parent=sl})
+				local bar = new("Frame",{Size=UDim2.new(0.7,0,1,0), Position=UDim2.new(0.28,0,0,0), BackgroundColor3=Color3.fromRGB(36,36,40), Parent=sl})
+				new("UICorner",{Parent=bar, CornerRadius=UDim.new(0,6)})
+				local fill = new("Frame",{Size=UDim2.new((initVal-minv)/(maxv-minv),0,1,0), BackgroundColor3=theme.Accent, Parent=bar})
+				local dragging = false
+				local function setFromX(x)
+					local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+					fill.Size = UDim2.new(rel,0,1,0)
+					local val = math.floor(minv + (maxv-minv)*rel)
+					safeCall(onChange, val)
+				end
+				bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging = true; setFromX(i.Position.X) end end)
+				bar.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging = false end end)
+				UserInputService.InputChanged:Connect(function(i) if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then setFromX(i.Position.X) end end)
+				return sl
+			end
+
+			local r = default.R or 90; local g = default.G or 160; local b = default.B or 255
+			local function updatePreview()
+				preview.BackgroundColor3 = Color3.fromRGB(r,g,b)
+				if saveSettings then window._settings[opts.SaveKey or name] = {R=r,G=g,B=b}; window._save() end
+				if cb then pcall(cb, {R=r,G=g,B=b}) end
+			end
+
+			local sr = sliderFactory(28,"R",r,0,255,function(v) r=v; updatePreview() end)
+			local sg = sliderFactory(52,"G",g,0,255,function(v) g=v; updatePreview() end)
+			local sb = sliderFactory(76,"B",b,0,255,function(v) b=v; updatePreview() end)
+
+			-- restore saved
+			if saveSettings and window._settings[opts.SaveKey or name] then
+				local s = window._settings[opts.SaveKey or name]
+				if type(s)=="table" then r,g,b = s.R or r,s.G or g,s.B or b; updatePreview() end
+			end
+
+			place(frame, opts)
+			return frame
+		end
+
+		-- Progress bar
+		function tab:CreateProgress(opts)
+			opts = opts or {}
+			local name = opts.Name or "Progress"
+			local value = math.clamp(opts.Value or 0, 0, 100)
+			local frame = new("Frame",{Size=UDim2.new(1,-10,0,40), BackgroundColor3=theme.Panel})
+			new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+			new("TextLabel",{Text=name, Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, TextColor3=theme.Text, Font=Enum.Font.Gotham, Parent=frame})
+			local bar = new("Frame",{Size=UDim2.new(1,-14,0,12), Position=UDim2.new(0,7,0,22), BackgroundColor3=Color3.fromRGB(50,50,56), Parent=frame})
+			new("UICorner",{Parent=bar, CornerRadius=UDim.new(0,6)})
+			local fill = new("Frame",{Size=UDim2.new(value/100,0,1,0), BackgroundColor3=theme.Accent, Parent=bar})
+			place(frame, opts)
+			return {
+				Frame = frame,
+				Set = function(v) v = math.clamp(v,0,100); fill.Size = UDim2.new(v/100,0,1,0) end
+			}
+		end
+
+		-- done creating tab
+		table.insert(window._tabs, {Name=name, Panel=panel, Button=tabBtn})
+		return tab
 	end
 
-	return Tabs
+	-- Notify
+	function window:Notify(title, message, duration)
+		duration = duration or 4
+		local box = new("Frame",{Size=UDim2.new(0,300,0,0), BackgroundColor3=theme.Panel, Parent=window._notify})
+		new("UICorner",{Parent=box, CornerRadius=UDim.new(0,8)})
+		new("TextLabel",{Text=title, Font=Enum.Font.GothamBold, TextSize=14, TextColor3=theme.Text, BackgroundTransparency=1, Position=UDim2.new(0,12,0,8), Parent=box})
+		new("TextLabel",{Text=message, Font=Enum.Font.Gotham, TextSize=12, TextColor3=theme.SubText, BackgroundTransparency=1, Position=UDim2.new(0,12,0,28), Parent=box})
+		tween(box,{Size=UDim2.new(0,300,0,64)}, TweenInfo.new(0.22)):Play()
+		delay(duration, function() tween(box,{Size=UDim2.new(0,300,0,0)}, TweenInfo.new(0.18)):Play(); wait(0.18); box:Destroy() end)
+	end
+
+	-- return window API
+	return window
 end
 
-return LegitxWXLib
+-- safeCall helper exposed internally
+function safeCall(fn, ...)
+	if type(fn) ~= "function" then return end
+	local ok, err = pcall(fn, ...)
+	if not ok then warn("[Legitxwx] callback error:", err) end
+end
+
+return Legitxwx
