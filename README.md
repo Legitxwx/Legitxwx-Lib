@@ -1,5 +1,5 @@
 ```
-local lib = require(game.ReplicatedStorage.LegitxwxUILib)
+local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Legitxwx/Legitxwx-Lib/refs/heads/main/src/LegitxwxUILib"))()
 ```
 ```
 local win = lib.CreateWindow({
