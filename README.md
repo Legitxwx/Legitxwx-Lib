@@ -1,5 +1,5 @@
 ```
-local LegitxWX = require(game.ReplicatedStorage.LegitxWXLibTabs)
+local LegitxWX = loadstring(game:HttpGet("https://raw.githubusercontent.com/Legitxwx/Legitxwx-Lib/refs/heads/main/src/LegitxwxUILib"))()
 ```
 
 ```
